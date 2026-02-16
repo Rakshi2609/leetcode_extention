@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>LeetCode Auto Commit</title>
+    <style>
+      :root{--bg:#fff;--muted:#666;--accent:#0a6}
+      body{font-family:Inter,Arial,Helvetica,sans-serif;background:var(--bg);color:#222;padding:12px;min-width:300px}
+      h3{margin:0 0 8px 0}
+      label{display:block;margin-top:8px;font-size:13px;color:#333}
+      input{width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:6px}
+      .row{display:flex;gap:8px;margin-top:8px}
+      button{padding:8px;border-radius:6px;border:1px solid #ccc;background:#fff;cursor:pointer}
+      button.primary{background:var(--accent);color:#fff;border-color:transparent}
+      #status{margin-top:8px;font-size:12px;color:var(--muted)}
+    </style>
+  </head>
+  <body>
+    <h3>LeetCode Auto Commit</h3>
+    <form id="popupForm">
+      <label>Owner
+        <input id="owner" placeholder="owner" />
+      </label>
+      <label>Repo
+        <input id="repo" placeholder="repo" />
+      </label>
+      <label>Branch
+        <input id="branch" placeholder="main" />
+      </label>
+      <label>Token
+        <div style="display:flex;gap:8px"><input id="token" placeholder="ghp_..." type="password" style="flex:1" /><button id="toggleToken" type="button">Show</button></div>
+      </label>
+      <div class="row">
+        <button id="save" class="primary" type="submit">Save</button>
+        <button id="test" type="button">Test</button>
+      </div>
+    </form>
+    <div id="status"> </div>
+    <script src="popup.js"></script>
+  </body>
+</html>
