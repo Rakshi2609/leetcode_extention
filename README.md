@@ -38,3 +38,21 @@ Chrome Web Store readiness checklist
 - [ ] Confirm minimal permissions (storage, host permission for GitHub API only).
 - [ ] Test on modern Chrome versions and handle error reporting gracefully.
 # leetcode_extention
+
+## Quick Install
+
+1. Open Chrome and go to `chrome://extensions`.
+2. Enable **Developer mode**.
+3. Click **Load unpacked** and select this repository folder.
+
+## Usage
+
+- Open the extension Options and set your GitHub `Owner`, `Repository`, `Branch`, and `Personal Access Token` (PAT). The PAT requires `public_repo` for public repos or `repo` for private repos.
+- On LeetCode, when a submission shows **Accepted**, the extension will extract the solution and metadata and commit it to `LeetCode/{slug}.{ext}` and append an entry to `LeetCode/README.md`.
+
+## Notes
+
+- Tokens are stored in `chrome.storage.sync` for convenience; treat PATs carefully and consider using an OAuth flow for public distribution.
+- If language detection mislabels an extension, open an issue and include the page & console logs for debugging.
+
+---
