@@ -56,3 +56,18 @@ Chrome Web Store readiness checklist
 - If language detection mislabels an extension, open an issue and include the page & console logs for debugging.
 
 ---
+
+## Generating a GitHub Personal Access Token (PAT)
+
+1. Sign in to GitHub and open `Settings` → `Developer settings` → `Personal access tokens`.
+2. Choose **Generate new token**. You may see options for a **classic** token or a **fine‑grained** token — either works for this extension, but the scopes differ:
+  - For private repositories use the `repo` scope (classic) or grant repository write access with a fine‑grained token.
+  - For public repositories only, the `public_repo` scope (classic) is sufficient.
+3. Set an expiration (shorter is safer) and generate the token. Copy the token value now — you won't be able to view it again.
+4. Open the extension Options page and paste the token into the **Personal Access Token** field, then save.
+
+Security tips:
+- Treat the PAT like a password: do not commit it to source control or share it.
+- Revoke the token immediately if you suspect it was exposed.
+- For published/production distribution consider implementing an OAuth flow instead of asking users for a PAT.
+
