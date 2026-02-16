@@ -1,15 +1,19 @@
 // Utility functions: language mapping, sanitizers, base64 helpers
 const LANG_TO_EXT = {
-  cpp: ["cpp", "c++", "cpp11", "c++11"],
-  py: ["python", "python3", "py3", "py"],
+  cpp: ["cpp", "c++", "cpp11", "c++11", "c++14", "c++17", "c++20"],
+  py: ["python", "python3", "py3", "py", "python2"],
   java: ["java"],
-  js: ["javascript", "nodejs", "js"],
+  js: ["javascript", "nodejs", "js", "node", "node.js"],
   ts: ["typescript", "ts"],
-  cs: ["c#", "csharp"],
+  cs: ["c#", "csharp", "cs"],
   rb: ["ruby", "rb"],
   go: ["golang", "go"],
   kt: ["kotlin", "kt"],
-  swift: ["swift"]
+  swift: ["swift"],
+  rs: ["rust", "rs"],
+  scala: ["scala"],
+  php: ["php"],
+  c: ["c"]
 };
 
 function detectExtensionFromLanguage(languageId) {
