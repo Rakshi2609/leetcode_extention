@@ -71,3 +71,20 @@ Security tips:
 - Revoke the token immediately if you suspect it was exposed.
 - For published/production distribution consider implementing an OAuth flow instead of asking users for a PAT.
 
+## How the extension handles your token (local-only options)
+
+- By default this extension stores the PAT in `chrome.storage.sync` from the Options page. `chrome.storage.sync` stores data locally and (optionally) syncs it to the user's Google account if the user has Chrome sync enabled.
+- If you require the token to remain only on the local machine (never synced), change the extension to use `chrome.storage.local` instead of `chrome.storage.sync`. This keeps the token on the current browser profile only.
+
+Developer notes to force local-only storage:
+
+1. In `src/options.js` and any background script calls that read the token, replace calls to `chrome.storage.sync.get/set` with `chrome.storage.local.get/set`.
+2. Reload the extension in `chrome://extensions` after making the change.
+
+Clearing or revoking tokens:
+
+- To remove a stored token from the extension: open the Options page and clear the Personal Access Token field, then save.
+- Always revoke the token on GitHub if you believe it was exposed: `Settings` → `Developer settings` → `Personal access tokens` → revoke.
+
+Security reminder: storing a PAT in the browser gives the extension access to your repositories. Use a token with the minimal required scopes, set an expiration, and rotate/revoke tokens periodically.
+
