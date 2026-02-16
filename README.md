@@ -86,5 +86,5 @@ Clearing or revoking tokens:
 - To remove a stored token from the extension: open the Options page and clear the Personal Access Token field, then save.
 - Always revoke the token on GitHub if you believe it was exposed: `Settings` → `Developer settings` → `Personal access tokens` → revoke.
 
-Security reminder: storing a PAT in the browser gives the extension access to your repositories. Use a token with the minimal required scopes, set an expiration, and rotate/revoke tokens periodically.
+Security reminder: storing a PAT in the browser gives the extension access to your repositories. Use a token with the minimal required scopes, set an expiration, and rotate/revoke tokens periodically. 
 

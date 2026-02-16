@@ -1,7 +1,7 @@
 import { detectExtensionFromLanguage, sanitizeTitleForPath, base64Encode, base64Decode } from './utils.js';
 
 // Background service worker: receive commit requests and push to GitHub
-const DEBUG = false;
+const DEBUG = true; // Set to false in production
 function log(...args){ if (DEBUG) console.log('[lc-auto-commit-bg]', ...args); }
 console.log('[lc-auto-commit-bg] service worker started');
 
@@ -48,6 +48,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const { owner, repo, token, branch } = cfg;
         if (!owner || !repo || !token) return sendResponse({ error: 'Missing GitHub config (owner/repo/token) in extension options' });
         const payload = msg.payload || {};
+        console.log('[lc-auto-commit-bg] received commit request', { 
+          title: payload.title, 
+          language: payload.language, 
+          codeLength: payload.code ? payload.code.length : 0 
+        });
+        
+        // Validate we have code
+        if (!payload.code || payload.code.trim().length < 20){
+          console.error('[lc-auto-commit-bg] Code insufficient, aborting. Length:', payload.code ? payload.code.length : 0);
+          return sendResponse({ error: 'Code too short or empty' });
+        }
+        
         const titleRaw = payload.title || payload.slug || 'unknown';
         const title = sanitizeTitleForPath(titleRaw);
         const ext = detectExtensionFromLanguage(payload.language);
@@ -60,7 +72,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const solutionB64 = base64Encode(payload.code || '');
         const entryLine = `- **${payload.title || titleRaw}** ([solution](${solutionFilename})) - ${payload.language||'Unknown'} - ${payload.difficulty||'Unknown'} - ${new Date(payload.ts||Date.now()).toISOString()}`;
 
-        console.log('[lc-auto-commit-bg] preparing to push solution', { owner, repo, path: solutionPath, language: payload.language });
+        console.log('[lc-auto-commit-bg] preparing to push solution', { owner, repo, path: solutionPath, language: payload.language, extension: ext, title });
         // Check existing solution
         let existingSol = await getFile(owner, repo, solutionPath, branch, token);
         // If path exists but is a directory (GitHub returns array), pick alternate filename using slug to avoid collision
@@ -74,19 +86,47 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           // reassign
           existingSol = await getFile(owner, repo, altPath, branch, token);
         }
-        if (existingSol.ok && existingSol.json && existingSol.json.content){
-          const existingContentB64 = existingSol.json.content.replace(/\n/g,'');
-          if (existingContentB64 === solutionB64){
-            // no change for solution
-            console.log('[lc-auto-commit-bg] Solution unchanged, skipping commit');
-          } else {
-            // update
+        
+        // Always update the solution file with retry logic for 409 conflicts
+        let updateAttempts = 0;
+        let updateSuccess = false;
+        while (updateAttempts < 3 && !updateSuccess){
+          updateAttempts++;
+          
+          if (existingSol.ok && existingSol.json && existingSol.json.content){
+            // Update existing file
             const commitMsg = `Update LeetCode solution: ${payload.title} (${payload.language})`;
             const res = await putFile(owner, repo, solutionPath, branch, token, solutionB64, commitMsg, existingSol.json.sha);
-            if (!res.ok) return sendResponse({ error: `Failed to update solution: ${res.status} ${JSON.stringify(res.json)}` });
-            console.log('[lc-auto-commit-bg] Solution updated', { path: solutionPath });
+            if (res.ok){
+              console.log('[lc-auto-commit-bg] Solution updated', { path: solutionPath });
+              updateSuccess = true;
+            } else if (res.status === 409 && updateAttempts < 3){
+              // Conflict - refetch and retry
+              console.log('[lc-auto-commit-bg] 409 conflict on attempt', updateAttempts, '- refetching SHA and retrying...');
+              await new Promise(r => setTimeout(r, 500)); // brief delay
+              existingSol = await getFile(owner, repo, solutionPath, branch, token);
+              if (!existingSol.ok || !existingSol.json){
+                return sendResponse({ error: `Failed to refetch file after conflict: ${existingSol.status}` });
+              }
+            } else {
+              return sendResponse({ error: `Failed to update solution: ${res.status} ${JSON.stringify(res.json)}` });
+            }
+          } else {
+            // Create new solution file
+            const commitMsg = `Add LeetCode solution: ${payload.title} (${payload.language})`;
+            const res = await putFile(owner, repo, solutionPath, branch, token, solutionB64, commitMsg, undefined);
+            if (res.ok){
+              console.log('[lc-auto-commit-bg] Solution created', { path: solutionPath });
+              updateSuccess = true;
+            } else {
+              return sendResponse({ error: `Failed to create solution: ${res.status} ${JSON.stringify(res.json)}` });
+            }
           }
-        } else {
+        }
+        
+        if (!updateSuccess){
+          return sendResponse({ error: 'Failed to update solution after 3 attempts (conflicts)' });
+        }
           // create new solution file
           const commitMsg = `Add LeetCode solution: ${payload.title} (${payload.language})`;
           const res = await putFile(owner, repo, solutionPath, branch, token, solutionB64, commitMsg, undefined);
@@ -136,29 +176,84 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (!tabId) return sendResponse({ ok: false, error: 'no-tab' });
         // execute in page context and return simple payload
         const results = await chrome.scripting.executeScript({
-          target: { tabId, allFrames: true },
+          target: { tabId, allFrames: false },
+          world: 'MAIN',
           func: () => {
             try{
+              let allAttempts = [];
+              
+              // Method 1: Monaco editor models
               const mon = window.monaco && window.monaco.editor;
               if (mon && mon.getModels){
                 const models = mon.getModels();
                 if (models && models.length > 0){
-                  const m = models[0];
-                  let code = '';
-                  try{ code = m.getValue(); }catch(e){}
-                  const language = (m.getLanguageId && m.getLanguageId()) || (m.getModeId && m.getModeId()) || null;
-                  return { ok: true, payload: { code, language } };
+                  for (const m of models){
+                    try{
+                      const code = m.getValue ? m.getValue() : '';
+                      const language = (m.getLanguageId && m.getLanguageId()) || (m.getModeId && m.getModeId()) || null;
+                      if (code && code.trim().length > 0){
+                        allAttempts.push({ method: 'monaco-model', code, language, length: code.length });
+                      }
+                    }catch(e){/* ignore */}
+                  }
                 }
               }
-              // try window.editor
-              if (window.editor && typeof window.editor.getModel === 'function'){
+              
+              // Method 2: window.editor
+              if (window.editor){
                 try{
-                  const em = window.editor.getModel();
-                  const code = (em && em.getValue && em.getValue()) || '';
-                  const language = (em && (em.getLanguageId && em.getLanguageId())) || null;
-                  return { ok: true, payload: { code, language } };
-                }catch(e){}
+                  if (typeof window.editor.getValue === 'function'){
+                    const code = window.editor.getValue();
+                    if (code && code.trim().length > 0){
+                      allAttempts.push({ method: 'window.editor.getValue', code, length: code.length });
+                    }
+                  }
+                  if (typeof window.editor.getModel === 'function'){
+                    const em = window.editor.getModel();
+                    const code = (em && em.getValue && em.getValue()) || '';
+                    const language = (em && em.getLanguageId && em.getLanguageId()) || null;
+                    if (code && code.trim().length > 0){
+                      allAttempts.push({ method: 'window.editor.getModel', code, language, length: code.length });
+                    }
+                  }
+                }catch(e){/* ignore */}
               }
+              
+              // Method 3: Check for React component state (LeetCode sometimes stores code here)
+              try{
+                const editorDom = document.querySelector('.monaco-editor, [class*="editor"], [data-track-load="description_content"]');
+                if (editorDom){
+                  // Try to find React fiber
+                  for (const key in editorDom){
+                    if (key.startsWith('__react')){
+                      const fiber = editorDom[key];
+                      // Navigate fiber tree looking for code state
+                      let current = fiber;
+                      let depth = 0;
+                      while (current && depth < 20){
+                        if (current.memoizedState && current.memoizedState.value){
+                          const val = current.memoizedState.value;
+                          if (typeof val === 'string' && val.length > 50){
+                            allAttempts.push({ method: 'react-state', code: val, length: val.length });
+                          }
+                        }
+                        current = current.return;
+                        depth++;
+                      }
+                      break;
+                    }
+                  }
+                }
+              }catch(e){/* ignore */}
+              
+              // Pick the longest code (likely the most complete)
+              if (allAttempts.length > 0){
+                allAttempts.sort((a, b) => b.length - a.length);
+                const best = allAttempts[0];
+                console.log('[probe] Found', allAttempts.length, 'attempts, using', best.method, 'with length', best.length);
+                return { ok: true, payload: { code: best.code, language: best.language || null } };
+              }
+              
               return { ok: true, payload: { code: '', language: null } };
             }catch(err){ return { ok: false, error: String(err) }; }
           }
